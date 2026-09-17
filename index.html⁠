@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>モバイルオーダー / 手机点餐</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f8f9fa; color: #333; padding-bottom: 80px; }
+    header { background: #fff; padding: 12px 16px; position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; z-index: 10; }
+    .table-badge { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 14px; }
+    .lang-btn { border: 1px solid #ddd; background: #fff; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+    
+    .category-nav { display: flex; overflow-x: auto; background: #fff; padding: 10px 16px; gap: 10px; border-bottom: 1px solid #eee; }
+    .cat-btn { border: none; background: #f1f3f5; padding: 6px 14px; border-radius: 20px; white-space: nowrap; font-size: 14px; cursor: pointer; }
+    .cat-btn.active { background: #e03131; color: #fff; font-weight: bold; }
+
+    .menu-list { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .item-card { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .item-info h4 { font-size: 16px; margin-bottom: 4px; }
+    .item-price { color: #e03131; font-weight: bold; font-size: 15px; }
+    .btn-add { background: #e03131; color: #fff; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; line-height: 1; cursor: pointer; }
+
+    .cart-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #eee; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; z-index: 20; }
+    .btn-submit { background: #e03131; color: #fff; border: none; padding: 10px 24px; border-radius: 24px; font-size: 15px; font-weight: bold; cursor: pointer; }
+    .btn-submit:disabled { background: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <span class="table-badge">{{ lang === 'ja' ? '卓番: ' + tableNo : '桌号: ' + tableNo }}</span>
+      <button class="lang-btn" @click="toggleLang">{{ lang === 'ja' ? '中文' : '日本語' }}</button>
+    </header>
+
+    <div class="category-nav">
+      <button 
+        v-for="cat in categories" 
+        :key="cat.id" 
+        :class="['cat-btn', { active: currentCategory === cat.id }]"
+        @click="currentCategory = cat.id">
+        {{ lang === 'ja' ? cat.nameJa : cat.nameZh }}
+      </button>
+    </div>
+
+    <div class="menu-list">
+      <div v-for="item in filteredItems" :key="item.id" class="item-card">
+        <div class="item-info">
+          <h4>{{ lang === 'ja' ? item.nameJa : item.nameZh }}</h4>
+          <div class="item-price">¥{{ item.price }} <span style="font-size: 12px; color: #888;">(税込)</span></div>
+        </div>
+        <button class="btn-add" @click="addToCart(item)">+</button>
+      </div>
+    </div>
+
+    <div class="cart-bar">
+      <div>
+        <div style="font-size: 13px; color: #666;">{{ lang === 'ja' ? '合計' : '合计' }}: {{ cartCount }} {{ lang === 'ja' ? '品' : '件' }}</div>
+        <div style="font-size: 18px; font-weight: bold; color: #e03131;">¥{{ cartTotal }}</div>
+      </div>
+      <button class="btn-submit" :disabled="cartCount === 0" @click="submitOrder">
+        {{ lang === 'ja' ? '注文を確定する' : '提交订单' }}
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const lang = ref('ja');
+        const currentCategory = ref('dimsum');
+        const tableNo = ref('1');
+        const cart = ref([]);
+
+        // 模拟菜单数据
+        const categories = [
+          { id: 'dimsum', nameJa: '点心・餃子', nameZh: '点心·饺子' },
+          { id: 'appetizer', nameJa: '前菜・一品', nameZh: '凉菜·小吃' },
+          { id: 'drink', nameJa: 'お飲み物', nameZh: '饮料·酒水' }
+        ];
+
+        const menuItems = [
+          { id: 1, cat: 'dimsum', nameJa: '焼き餃子 (6個)', nameZh: '煎饺 (6个)', price: 480 },
+          { id: 2, cat: 'dimsum', nameJa: '小籠包 (4個)', nameZh: '小笼包 (4个)', price: 600 },
+          { id: 3, cat: 'appetizer', nameJa: 'ピータン豆腐', nameZh: '皮蛋豆腐', price: 450 },
+          { id: 4, cat: 'appetizer', nameJa: 'よだれ鶏', nameZh: '口水鸡', price: 680 },
+          { id: 5, cat: 'drink', nameJa: '生ビール (中)', nameZh: '生啤酒 (中杯)', price: 550 },
+          { id: 6, cat: 'drink', nameZh: '乌龙茶', nameJa: 'ウーロン茶', price: 300 }
+        ];
+
+        onMounted(() => {
+          // 自动从链接中读取桌号，例如 index.html?table=5
+          const params = new URLSearchParams(window.location.search);
+          if (params.has('table')) {
+            tableNo.value = params.get('table');
+          }
+        });
+
+        const toggleLang = () => {
+          lang.value = lang.value === 'ja' ? 'zh' : 'ja';
+        };
+
+        const filteredItems = computed(() => {
+          return menuItems.filter(item => item.cat === currentCategory.value);
+        });
+
+        const addToCart = (item) => {
+          cart.value.push(item);
+        };
+
+        const cartCount = computed(() => cart.value.length);
+        const cartTotal = computed(() => cart.value.reduce((sum, item) => sum + item.price, 0));
+
+        const submitOrder = () => {
+          const itemSummary = cart.value.map(i => lang.value === 'ja' ? i.nameJa : i.nameZh).join(', ');
+          const msg = lang.value === 'ja' 
+            ? `卓番 ${tableNo.value} から注文が送信されました！\n内容: ${itemSummary}\n合計: ¥${cartTotal.value}`
+            : `桌号 ${tableNo.value} 订单已发送！\n明细: ${itemSummary}\n合计: ¥${cartTotal.value}`;
+          alert(msg);
+          cart.value = [];
+        };
+
+        return {
+          lang, currentCategory, tableNo, categories, filteredItems,
+          addToCart, cartCount, cartTotal, submitOrder, toggleLang
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
